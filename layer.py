@@ -1,5 +1,5 @@
 import tensorflow as tf
-import disttf_util as util
+import distutil as util
 
 conv_counter = 0
 affine_counter = 0
@@ -13,18 +13,15 @@ def _conv(inpOp, nIn, nOut, kH, kW, dH, dW, padType):
     global parameters
     name = 'conv' + str(conv_counter)
     conv_counter += 1
-    with tf.name_scope(name) as scope:
-        kernel = tf.Variable(tf.truncated_normal([kH, kW, nIn, nOut],
-                                                 dtype=tf.float32,
-                                                 stddev=1e-1), name='weights')
+
+    with tf.variable_scope(name) as scope:
+        kernel = util._variable_with_weight_decay('weights', shape=[kH, kW, nIn, nOut],
+                                                  stddev=1e-4, wd=0.0)
         strides = [1, dH, dW, 1]
         conv = tf.nn.conv2d(inpOp, kernel, strides, padding=padType)
-        biases = tf.Variable(tf.constant(0.0, shape=[nOut], dtype=tf.float32),
-                             trainable=True, name='biases')
-        bias = tf.reshape(tf.nn.bias_add(conv, biases),
-                          conv.get_shape())
-        conv1 = tf.nn.relu(bias, name=scope)
-        parameters += [kernel, biases]
+        biases = util._variable_on_cpu('biases', [nOut], tf.constant_initializer(0.0))
+        bias = tf.nn.bias_add(conv, biases)
+        conv1 = tf.nn.relu(bias, name=scope.name)
         util.print_activations(conv1)
         return conv1
 
@@ -52,11 +49,9 @@ def _mpool(inpOp, kH, kW, dH, dW):
     pool_counter += 1
     ksize = [1, kH, kW, 1]
     strides = [1, dH, dW, 1]
-    return tf.nn.max_pool(inpOp,
-                          ksize=ksize,
-                          strides=strides,
-                          padding='VALID',
-                          name=name)
+
+    return tf.nn.max_pool(inpOp,ksize=ksize,
+                          strides=strides,padding='SAME',name=name)
 
 def _norm(inpOp, depth, bias, alpha, beta):
     global norm_counter
@@ -76,6 +71,3 @@ def loss(logits, labels):
         logits=logits, labels=onehot_labels, name='xentropy')
     loss = tf.reduce_mean(cross_entropy, name='xentropy_mean')
     return loss
-
-
-
